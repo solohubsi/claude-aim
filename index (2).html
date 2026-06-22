@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Оркестратор даних</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f3; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+.wrap { width: 100%; max-width: 820px; }
+h1 { font-size: 20px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #888; margin-bottom: 1.75rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem; }
+.chip { font-size: 12px; padding: 4px 12px; border: 0.5px solid #d0d0d0; border-radius: 20px; cursor: pointer; background: #fff; color: #555; }
+.chip:hover { background: #f0f0f0; }
+.input-row { display: flex; gap: 8px; margin-bottom: 1.75rem; }
+textarea { flex: 1; padding: 10px 14px; font-size: 15px; border: 0.5px solid #d0d0d0; border-radius: 10px; resize: none; height: 56px; font-family: inherit; background: #fff; color: #1a1a1a; }
+textarea:focus { outline: none; border-color: #888; }
+.btn-send { padding: 0 22px; background: #1a1a1a; color: #fff; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; height: 56px; font-family: inherit; white-space: nowrap; }
+.btn-send:hover { background: #333; }
+.btn-send:disabled { background: #bbb; cursor: not-allowed; }
+.messages { display: flex; flex-direction: column; gap: 1rem; }
+.msg-user { background: #1a1a1a; color: #fff; align-self: flex-end; max-width: 75%; border-radius: 12px 12px 3px 12px; padding: 10px 16px; font-size: 14px; line-height: 1.6; }
+.msg-bot { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 12px; padding: 14px 18px; font-size: 14px; }
+.msg-loading { background: #fff; border: 0.5px solid #e8e8e8; border-radius: 12px; padding: 14px 18px; font-size: 13px; color: #aaa; font-style: italic; }
+.msg-error { background: #fff8f8; border: 0.5px solid #f5c0c0; border-radius: 12px; padding: 14px 18px; font-size: 14px; color: #c0392b; }
+.badge { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 20px; margin-bottom: 10px; font-weight: 500; }
+.badge-pbi { background: #e6f1fb; color: #185fa5; }
+.badge-zoho { background: #e1f5ee; color: #0f6e56; }
+.badge-salary { background: #faeeda; color: #854f0b; }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ddd; border-top-color: #888; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+thead th { text-align: left; padding: 6px 10px; border-bottom: 1px solid #e8e8e8; color: #666; font-weight: 500; white-space: nowrap; }
+tbody td { padding: 6px 10px; border-bottom: 0.5px solid #f3f3f3; color: #1a1a1a; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #fafafa; }
+.meta { font-size: 12px; color: #999; margin-top: 10px; padding-top: 8px; border-top: 0.5px solid #f0f0f0; }
+.scalar { font-size: 28px; font-weight: 500; color: #1a1a1a; margin: 4px 0 2px; }
+.scalar-label { font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Оркестратор даних</h1>
+  <p class="sub">Фінанси · HR · Рекрутинг · Зарплатні бенчмарки</p>
+
+  <div class="chips">
+    <span class="chip" onclick="setQ('Net Profit травень 2026')">Net Profit травень 2026</span>
+    <span class="chip" onclick="setQ('OPEX Company по місяцях Q1 2026')">OPEX Q1 2026</span>
+    <span class="chip" onclick="setQ('Rate по рівнях травень 2026')">Rate по рівнях</span>
+    <span class="chip" onclick="setQ('New Turnover травень 2026')">New Turnover</span>
+    <span class="chip" onclick="setQ('Утилізація по рівнях травень 2026')">Утилізація</span>
+    <span class="chip" onclick="setQ('Gross Margin по місяцях Q1 2026')">Gross Margin Q1</span>
+    <span class="chip" onclick="setQ('Відкриті вакансії в Zoho Recruit')">Вакансії Zoho</span>
+    <span class="chip" onclick="setQ('Зарплати Senior JavaScript по Djinni')">Djinni Senior JS</span>
+    <span class="chip" onclick="setQ('Зарплати Python Middle по ринку itjobswatch')">itjobswatch Python</span>
+  </div>
+
+  <div class="input-row">
+    <textarea id="qInput" placeholder="Задайте питання українською…" onkeydown="handleKey(event)"></textarea>
+    <button class="btn-send" id="sendBtn" onclick="send()">Надіслати</button>
+  </div>
+
+  <div class="messages" id="messages"></div>
+</div>
+
+<script>
+const WH = {
+  pbi:    'https://n8n-demo.aimprosoft.com/webhook/c55ca078-5603-433a-bdf0-43cdd3312823',
+  zoho:   'https://n8n-demo.aimprosoft.com/webhook/mcp-int-call',
+  salary: 'https://n8n-demo.aimprosoft.com/webhook/mkt-salary-benchmark'
+};
+
+function setQ(t) { document.getElementById('qInput').value = t; }
+function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+
+function detectDomain(q) {
+  const l = q.toLowerCase();
+  if (['зарплат','salary','бенчмарк','djinni','adzuna','itjobswatch','ринков'].some(w => l.includes(w))) return 'salary';
+  if (['вакансі','кандидат','резюме','рекрут','zoho'].some(w => l.includes(w))) return 'zoho';
+  return 'pbi';
+}
+
+function detectZohoAction(q) {
+  const l = q.toLowerCase();
+  if (l.includes('резюме') || l.includes('get_cv')) return 'get_cv';
+  if (l.includes('кандидат') && (l.includes('email') || l.includes('пошт'))) return 'candidates_by_email';
+  if (l.includes('кандидат')) return 'candidates_by_job';
+  if (l.includes('djinni') && l.includes('кандидат')) return 'djinni_candidates';
+  return 'list_jobs';
+}
+
+function buildPayload(domain, q) {
+  if (domain === 'pbi') return { userQuestion: q };
+  if (domain === 'salary') {
+    const l = q.toLowerCase();
+    const src = l.includes('djinni') ? 'djinni' : l.includes('adzuna') ? 'adzuna' : 'itjobswatch';
+    const p = { source: src, limit: 100 };
+    const cm = q.match(/\b(javascript|typescript|python|java|react|node|php|ios|android|devops|qa|data|go|ruby|kotlin|swift)\b/i);
+    if (cm) p.category = cm[0].toLowerCase();
+    if (l.includes('senior')) p.experience_label = 'Senior';
+    else if (l.includes('middle')) p.experience_label = 'Middle';
+    else if (l.includes('junior')) p.experience_label = 'Junior';
+    return p;
+  }
+  return { action: detectZohoAction(q), limit: 50, fields: ['id','name','status','salary','applied','city','recruiter','seniority','skills'] };
+}
+
+function extractRows(data, domain) {
+  if (domain === 'pbi') { try { return data.results[0].tables[0].rows; } catch(e) { return [data]; } }
+  if (domain === 'salary') return data.rows || [data];
+  return Array.isArray(data) ? data : (data.jobs || data.candidates || data.data || [data]);
+}
+
+function fmtVal(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'number') {
+    if (Math.abs(v) > 1000) return v.toLocaleString('uk-UA', { maximumFractionDigits: 0 });
+    return v.toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+  }
+  if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+  return String(v);
+}
+
+function isScalar(rows) {
+  return rows.length === 1 && Object.keys(rows[0]).length <= 3;
+}
+
+function renderRows(rows, domain) {
+  if (!rows || rows.length === 0) return '<em style="color:#999">Даних не знайдено</em>';
+
+  if (isScalar(rows)) {
+    const r = rows[0];
+    const keys = Object.keys(r);
+    let html = '';
+    keys.forEach(k => {
+      const v = r[k];
+      html += '<div class="scalar-label">' + k + '</div>';
+      html += '<div class="scalar">' + fmtVal(v) + '</div>';
+    });
+    return html;
+  }
+
+  const keys = Object.keys(rows[0]);
+  let html = '<div style="overflow-x:auto"><table><thead><tr>';
+  keys.forEach(k => { html += '<th>' + k + '</th>'; });
+  html += '</tr></thead><tbody>';
+  rows.slice(0, 100).forEach(r => {
+    html += '<tr>';
+    keys.forEach(k => { html += '<td>' + fmtVal(r[k]) + '</td>'; });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  if (rows.length > 100) html += '<div class="meta">Показано 100 з ' + rows.length + ' рядків</div>';
+  return html;
+}
+
+function badgeHtml(domain) {
+  const map = { pbi: ['Power BI','badge-pbi'], zoho: ['Zoho Recruit','badge-zoho'], salary: ['Salary Benchmark','badge-salary'] };
+  const [n, c] = map[domain];
+  return '<div><span class="badge ' + c + '">' + n + '</span></div>';
+}
+
+function addEl(html, cls) {
+  const d = document.createElement('div');
+  d.className = cls;
+  d.innerHTML = html;
+  document.getElementById('messages').appendChild(d);
+  d.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return d;
+}
+
+async function send() {
+  const q = document.getElementById('qInput').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  document.getElementById('qInput').value = '';
+
+  addEl(q, 'msg-user');
+  const domain = detectDomain(q);
+  const domainName = { pbi: 'Power BI', zoho: 'Zoho Recruit', salary: 'Salary Benchmark' }[domain];
+  const loading = addEl('<span class="spinner"></span>Запит до ' + domainName + '…', 'msg-loading');
+
+  try {
+    const res = await fetch(WH[domain], {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload(domain, q))
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const rows = extractRows(data, domain);
+    const meta = domain === 'salary' ? (data.source ? 'Джерело: ' + data.source + (data.rowCount ? ' · ' + data.rowCount + ' рядків' : '') : '') : (rows.length > 1 ? rows.length + ' рядків' : '');
+
+    loading.className = 'msg-bot';
+    loading.innerHTML = badgeHtml(domain) + renderRows(rows, domain) + (meta ? '<div class="meta">' + meta + '</div>' : '');
+  } catch(e) {
+    loading.className = 'msg-error';
+    loading.innerHTML = '<strong>Помилка:</strong> ' + e.message + (e.message.includes('fetch') ? '<br><small>Перевірте VPN підключення до n8n-demo.aimprosoft.com</small>' : '');
+  }
+
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
